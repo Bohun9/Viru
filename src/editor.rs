@@ -18,7 +18,10 @@ impl EditorLine {
     fn map_fx_to_rx(&self, fx: usize) -> usize {
         self.content
             .chars()
-            .map(|c| if c == '\t' { 4 } else { 1 })
+            .map(|c| match c {
+                '\t' => 4,
+                _ => 1,
+            })
             .take(fx)
             .sum::<usize>()
             .saturating_sub(1)
@@ -278,13 +281,13 @@ fn read_file(file_path: &str) -> Vec<EditorLine> {
 
 fn build_editor_line(content: &str) -> EditorLine {
     let mut render = vec![];
-    for c in content.chars() {
-        if c == '\t' {
+    for &c in content.as_bytes() {
+        if c == b'\t' {
             for _ in 0..4 {
                 render.push(b' ');
             }
         } else {
-            render.push(c as u8);
+            render.push(c);
         }
     }
 
