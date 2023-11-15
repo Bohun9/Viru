@@ -3,15 +3,18 @@ use std::fs;
 
 use super::terminal::settings::Window;
 use super::*;
+use highlight::{HLGroup, SyntaxHighlight};
 use modes::normal_mode::QuitError;
 use terminal::display::write;
 
+pub mod highlight;
 mod modes;
 pub mod searching;
 
 struct EditorLine {
     content: String,
     render: Vec<u8>,
+    highlight: Vec<HLGroup>,
 }
 
 impl EditorLine {
@@ -56,12 +59,15 @@ pub struct Editor {
     cmd_message: String,
     dirty: bool,
     last_pattern: Option<String>,
+    syntax_hl: Option<SyntaxHighlight>,
 }
 
 impl Editor {
     pub fn new(file_path: String) -> Self {
         let mut window = terminal::settings::get_window_size();
         window.num_rows -= 2;
+
+        let syntax_hl = highlight::get_syntax_highlighting(&file_path);
 
         Self {
             file_name: file_path.clone(),
@@ -73,10 +79,11 @@ impl Editor {
             },
             offset: Offset { x: 0, y: 0 },
             mode: Mode::Normal,
-            lines: read_file(&file_path),
+            lines: read_file(&file_path, &syntax_hl),
             cmd_message: "You are a great programmer!".to_string(),
             dirty: false,
             last_pattern: None,
+            syntax_hl,
         }
     }
 
@@ -123,8 +130,17 @@ impl Editor {
 
             if row < self.lines.len() {
                 if self.lines[row].render.len() > self.offset.x {
-                    let line = &self.lines[row].render[self.offset.x..];
-                    write(&line[..self.window.num_cols.min(line.len())]);
+                    let l = self.offset.x;
+                    let r = self.window.num_cols.min(self.lines[row].render.len());
+
+                    for j in l..r {
+                        terminal::display::set_fg_color(highlight::hl_group_to_term_color(
+                            &self.lines[row].highlight[j],
+                        ));
+                        write(&self.lines[row].render[j..j + 1]);
+                    }
+
+                    terminal::display::set_fg_color(0);
                 }
             } else {
                 write(b"~");
@@ -141,14 +157,25 @@ impl Editor {
         let dirty_status = if self.dirty { "[modified]" } else { "[sync]" };
         let current_line = (self.cursor.fy + 1).to_string();
         let num_lines = self.lines.len().to_string();
+        let file_language = if let Some(syntax_hl) = &self.syntax_hl {
+            &syntax_hl.language
+        } else {
+            ""
+        };
 
         let line = format!(
-            "{} {} {:>4$}/{}",
+            "{} {} {:>5$} {}/{}",
             file_name,
             dirty_status,
+            file_language,
             current_line,
             num_lines,
-            self.window.num_cols - 3 - file_name.len() - dirty_status.len() - num_lines.len()
+            self.window.num_cols
+                - 4
+                - file_name.len()
+                - dirty_status.len()
+                - current_line.len()
+                - num_lines.len()
         );
         write(&line.as_bytes().iter().cloned().collect::<Vec<u8>>());
 
@@ -177,7 +204,7 @@ impl Editor {
         let y = self.cursor.fy;
 
         self.lines[y].content.insert(x, c as char);
-        self.lines[y] = build_editor_line(&self.lines[y].content);
+        self.lines[y] = self.build_editor_line(&self.lines[y].content);
         self.cursor.fx += 1;
 
         self.dirty = true;
@@ -189,7 +216,7 @@ impl Editor {
         assert!(x > 0);
 
         self.lines[y].content.remove(x - 1);
-        self.lines[y] = build_editor_line(&self.lines[y].content);
+        self.lines[y] = self.build_editor_line(&self.lines[y].content);
         self.cursor.fx -= 1;
 
         self.dirty = true;
@@ -204,7 +231,7 @@ impl Editor {
         }
 
         self.lines[y].content.remove(x);
-        self.lines[y] = build_editor_line(&self.lines[y].content);
+        self.lines[y] = self.build_editor_line(&self.lines[y].content);
 
         if x == self.lines[y].content.len() {
             self.cursor.fx -= 1;
@@ -218,8 +245,8 @@ impl Editor {
         let y = self.cursor.fy;
 
         let new_line = &self.lines[y].content[x..];
-        self.lines.insert(y + 1, build_editor_line(new_line));
-        self.lines[y] = build_editor_line(&self.lines[y].content[0..x]);
+        self.lines.insert(y + 1, self.build_editor_line(new_line));
+        self.lines[y] = self.build_editor_line(&self.lines[y].content[0..x]);
 
         self.cursor.fx = 0;
         self.cursor.fy += 1;
@@ -238,14 +265,18 @@ impl Editor {
 
         let moved = self.lines[y].content.clone();
         self.lines[y - 1].content.push_str(&moved);
-        self.lines[y - 1] = build_editor_line(&self.lines[y - 1].content);
+        self.lines[y - 1] = self.build_editor_line(&self.lines[y - 1].content);
         self.lines.remove(y);
 
         self.dirty = true;
     }
 
     fn add_blank_line(&mut self, at: usize) {
-        self.lines.insert(at, build_editor_line(""));
+        self.lines.insert(at, self.build_editor_line(""));
+    }
+
+    fn build_editor_line(&self, content: &str) -> EditorLine {
+        build_editor_line(content, &self.syntax_hl)
     }
 
     fn save_file(&mut self) {
@@ -264,11 +295,11 @@ impl Editor {
     }
 }
 
-fn read_file(file_path: &str) -> Vec<EditorLine> {
+fn read_file(file_path: &str, syntax_hl: &Option<SyntaxHighlight>) -> Vec<EditorLine> {
     let mut res: Vec<EditorLine> = fs::read_to_string(file_path)
         .unwrap()
         .split("\n")
-        .map(|line| build_editor_line(line))
+        .map(|line| build_editor_line(line, syntax_hl))
         .collect();
 
     // Files have a dummy new line at the end that should not be showed.
@@ -279,7 +310,7 @@ fn read_file(file_path: &str) -> Vec<EditorLine> {
     res
 }
 
-fn build_editor_line(content: &str) -> EditorLine {
+fn build_editor_line(content: &str, syntax_hl: &Option<SyntaxHighlight>) -> EditorLine {
     let mut render = vec![];
     for &c in content.as_bytes() {
         if c == b'\t' {
@@ -291,8 +322,11 @@ fn build_editor_line(content: &str) -> EditorLine {
         }
     }
 
+    let highlight = highlight::get_line_highlighting(&render, syntax_hl);
+
     EditorLine {
         content: content.to_string(),
         render,
+        highlight,
     }
 }

@@ -22,3 +22,7 @@ pub fn swap_fg_and_bg_colors() {
 pub fn reset_appearance() {
     write(b"\x1b[0m");
 }
+
+pub fn set_fg_color(color: u8) {
+    write(&format_bytes!(b"\x1b[{}m", color));
+}
