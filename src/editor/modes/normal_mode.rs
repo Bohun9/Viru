@@ -1,4 +1,6 @@
 use super::super::Mode;
+use super::super::*;
+use super::*;
 use crate::editor::Editor;
 use crate::terminal::input::Key;
 
@@ -39,16 +41,16 @@ fn move_cursor(editor: &mut Editor, key: Key) {
             panic!("internal error");
         }
     }
+
+    normalize_fx(editor);
 }
 
 pub fn process_key_press(editor: &mut Editor, key: Key) -> Result<(), QuitError> {
+    let orig_cursor = editor.cursor.clone();
+
     match key {
-        Key::Control('q') => {
-            return Err(QuitError {});
-        }
         Key::Char(k) if ['h', 'j', 'k', 'l'].contains(&k) => {
             move_cursor(editor, key);
-            normalize_fx(editor);
         }
         Key::Char('0') => {
             editor.cursor.fx = 0;
@@ -62,9 +64,26 @@ pub fn process_key_press(editor: &mut Editor, key: Key) -> Result<(), QuitError>
         Key::Char('i') => {
             editor.mode = Mode::Insert;
         }
+        Key::Char('I') => {
+            editor.cursor.fx = 0;
+            editor.mode = Mode::Insert;
+        }
         Key::Char('a') => {
             editor.mode = Mode::Insert;
             editor.cursor.fx += 1;
+        }
+        Key::Char('A') => {
+            editor.mode = Mode::Insert;
+            editor.cursor.fx = editor.lines[editor.cursor.fy].content.len();
+        }
+        Key::Char('o') => {
+            editor.mode = Mode::Insert;
+            editor.add_blank_line(editor.cursor.fy + 1);
+            editor.cursor.fx = 0;
+            editor.cursor.fy += 1;
+        }
+        Key::Char('x') => {
+            editor.delete_current_char();
         }
         Key::Control('d') => {
             editor.cursor.fy = (editor.cursor.fy + 30).min(editor.lines.len().saturating_sub(1));
@@ -73,6 +92,43 @@ pub fn process_key_press(editor: &mut Editor, key: Key) -> Result<(), QuitError>
         Key::Control('u') => {
             editor.cursor.fy = editor.cursor.fy.saturating_sub(30);
             normalize_fx(editor);
+        }
+        Key::Slash => {
+            let maybe_pattern =
+                command_mode::enter_command(editor, "/", Some(searching::forward_search));
+
+            if let Some(pattern) = maybe_pattern {
+                editor.last_pattern = Some(pattern);
+            } else {
+                editor.cursor = orig_cursor;
+            }
+        }
+        Key::Char('n') => {
+            if let Some(pattern) = editor.last_pattern.clone() {
+                move_cursor(editor, Key::Char('l'));
+                if !searching::forward_search(editor, &pattern) {
+                    editor.cursor = orig_cursor;
+                }
+            }
+        }
+        Key::Char('N') => {
+            if let Some(pattern) = editor.last_pattern.clone() {
+                move_cursor(editor, Key::Char('h'));
+                if !searching::backward_search(editor, &pattern) {
+                    editor.cursor = orig_cursor;
+                }
+            }
+        }
+        Key::Colon => {
+            let maybe_command = command_mode::enter_command(editor, ":", None);
+            if let Some(command) = maybe_command {
+                if command == "q" {
+                    return Err(QuitError {});
+                }
+                if command == "w" {
+                    editor.save_file();
+                }
+            }
         }
         _ => {}
     }

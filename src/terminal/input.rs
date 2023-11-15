@@ -5,6 +5,8 @@ fn ctrl_key(c: char) -> u8 {
 }
 
 pub enum Key {
+    Colon,
+    Slash,
     Enter,
     Escape,
     Backspace,
@@ -39,6 +41,14 @@ pub fn read_key() -> Key {
 
     if buf[0] == b'\r' {
         return Key::Enter;
+    }
+
+    if c == '/' {
+        return Key::Slash;
+    }
+
+    if c == ':' {
+        return Key::Colon;
     }
 
     for c in 'a'..='z' {

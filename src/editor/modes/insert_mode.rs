@@ -13,7 +13,7 @@ pub fn process_key_press(editor: &mut Editor, key: Key) {
         Key::Char(c) => editor.insert_char(c as u8),
         Key::Backspace => {
             if editor.cursor.fx > 0 {
-                editor.delete_char()
+                editor.delete_previous_char()
             } else if editor.cursor.fy > 0 {
                 editor.join_lines();
             }

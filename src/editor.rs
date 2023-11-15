@@ -7,17 +7,18 @@ use modes::normal_mode::QuitError;
 use terminal::display::write;
 
 mod modes;
+pub mod searching;
 
 struct EditorLine {
-    content: Vec<u8>,
+    content: String,
     render: Vec<u8>,
 }
 
 impl EditorLine {
     fn map_fx_to_rx(&self, fx: usize) -> usize {
         self.content
-            .iter()
-            .map(|&c| if c == b'\t' { 4 } else { 1 })
+            .chars()
+            .map(|c| if c == '\t' { 4 } else { 1 })
             .take(fx)
             .sum::<usize>()
             .saturating_sub(1)
@@ -30,6 +31,7 @@ enum Mode {
     Command,
 }
 
+#[derive(Clone)]
 struct Cursor {
     fx: usize, // file x
     fy: usize, // file y
@@ -50,6 +52,7 @@ pub struct Editor {
     lines: Vec<EditorLine>,
     cmd_message: String,
     dirty: bool,
+    last_pattern: Option<String>,
 }
 
 impl Editor {
@@ -70,6 +73,7 @@ impl Editor {
             lines: read_file(&file_path),
             cmd_message: "You are a great programmer!".to_string(),
             dirty: false,
+            last_pattern: None,
         }
     }
 
@@ -130,7 +134,19 @@ impl Editor {
     fn draw_status_line(&self) {
         terminal::display::swap_fg_and_bg_colors();
 
-        let line = format!("{:<1$}", &self.file_name, self.window.num_cols);
+        let file_name = &self.file_name;
+        let dirty_status = if self.dirty { "[modified]" } else { "[sync]" };
+        let current_line = (self.cursor.fy + 1).to_string();
+        let num_lines = self.lines.len().to_string();
+
+        let line = format!(
+            "{} {} {:>4$}/{}",
+            file_name,
+            dirty_status,
+            current_line,
+            num_lines,
+            self.window.num_cols - 3 - file_name.len() - dirty_status.len() - num_lines.len()
+        );
         write(&line.as_bytes().iter().cloned().collect::<Vec<u8>>());
 
         terminal::display::reset_appearance();
@@ -157,14 +173,14 @@ impl Editor {
         let x = self.cursor.fx;
         let y = self.cursor.fy;
 
-        self.lines[y].content.insert(x, c);
+        self.lines[y].content.insert(x, c as char);
         self.lines[y] = build_editor_line(&self.lines[y].content);
         self.cursor.fx += 1;
 
         self.dirty = true;
     }
 
-    fn delete_char(&mut self) {
+    fn delete_previous_char(&mut self) {
         let x = self.cursor.fx;
         let y = self.cursor.fy;
         assert!(x > 0);
@@ -172,6 +188,24 @@ impl Editor {
         self.lines[y].content.remove(x - 1);
         self.lines[y] = build_editor_line(&self.lines[y].content);
         self.cursor.fx -= 1;
+
+        self.dirty = true;
+    }
+
+    fn delete_current_char(&mut self) {
+        let x = self.cursor.fx;
+        let y = self.cursor.fy;
+
+        if self.lines[y].content.len() == 0 {
+            return;
+        }
+
+        self.lines[y].content.remove(x);
+        self.lines[y] = build_editor_line(&self.lines[y].content);
+
+        if x == self.lines[y].content.len() {
+            self.cursor.fx -= 1;
+        }
 
         self.dirty = true;
     }
@@ -199,12 +233,31 @@ impl Editor {
         self.cursor.fx = self.lines[y - 1].content.len();
         self.cursor.fy -= 1;
 
-        let mut moved = self.lines[y].content.clone();
-        self.lines[y - 1].content.append(&mut moved);
+        let moved = self.lines[y].content.clone();
+        self.lines[y - 1].content.push_str(&moved);
         self.lines[y - 1] = build_editor_line(&self.lines[y - 1].content);
         self.lines.remove(y);
 
         self.dirty = true;
+    }
+
+    fn add_blank_line(&mut self, at: usize) {
+        self.lines.insert(at, build_editor_line(""));
+    }
+
+    fn save_file(&mut self) {
+        fs::write(
+            &self.file_name,
+            &self
+                .lines
+                .iter()
+                .flat_map(|line| line.content.chars().chain(std::iter::once('\n')))
+                .collect::<String>()
+                .as_bytes(),
+        )
+        .unwrap();
+
+        self.dirty = false;
     }
 }
 
@@ -212,27 +265,31 @@ fn read_file(file_path: &str) -> Vec<EditorLine> {
     let mut res: Vec<EditorLine> = fs::read_to_string(file_path)
         .unwrap()
         .split("\n")
-        .map(|line| build_editor_line(&line.as_bytes().to_vec()))
+        .map(|line| build_editor_line(line))
         .collect();
 
-    res.pop();
+    // Files have a dummy new line at the end that should not be showed.
+    // Corner case when we want to use it is an empty file.
+    if res.len() > 1 {
+        res.pop();
+    }
     res
 }
 
-fn build_editor_line(content: &[u8]) -> EditorLine {
+fn build_editor_line(content: &str) -> EditorLine {
     let mut render = vec![];
-    for &c in content {
-        if c == b'\t' {
+    for c in content.chars() {
+        if c == '\t' {
             for _ in 0..4 {
                 render.push(b' ');
             }
         } else {
-            render.push(c);
+            render.push(c as u8);
         }
     }
 
     EditorLine {
-        content: content.to_vec(),
+        content: content.to_string(),
         render,
     }
 }
