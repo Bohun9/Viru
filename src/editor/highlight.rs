@@ -22,9 +22,9 @@ pub fn hl_group_to_term_color(hl_group: &HLGroup) -> u8 {
         HLGroup::NORMAL => 0,
         HLGroup::NUMBER => 31,
         HLGroup::STRING => 32,
-        HLGroup::KEYWORD => 34,
+        HLGroup::KEYWORD => 36,
         HLGroup::TYPE => 33,
-        HLGroup::COMMENT => 36,
+        HLGroup::COMMENT => 34,
     }
 }
 

@@ -62,22 +62,22 @@ pub fn process_key_press(editor: &mut Editor, key: Key) -> Result<(), QuitError>
                 .saturating_sub(1)
         }
         Key::Char('i') => {
-            editor.mode = Mode::Insert;
+            editor.mode = Mode::INSERT;
         }
         Key::Char('I') => {
             editor.cursor.fx = 0;
-            editor.mode = Mode::Insert;
+            editor.mode = Mode::INSERT;
         }
         Key::Char('a') => {
-            editor.mode = Mode::Insert;
+            editor.mode = Mode::INSERT;
             editor.cursor.fx += 1;
         }
         Key::Char('A') => {
-            editor.mode = Mode::Insert;
+            editor.mode = Mode::INSERT;
             editor.cursor.fx = editor.lines[editor.cursor.fy].content.len();
         }
         Key::Char('o') => {
-            editor.mode = Mode::Insert;
+            editor.mode = Mode::INSERT;
             editor.add_blank_line(editor.cursor.fy + 1);
             editor.cursor.fx = 0;
             editor.cursor.fy += 1;

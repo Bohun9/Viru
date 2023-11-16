@@ -8,7 +8,7 @@ pub fn enter_command(
     callback: Option<fn(&mut Editor, &str) -> bool>,
 ) -> Option<String> {
     let mut prompt = String::new();
-    editor.mode = Mode::Command;
+    editor.mode = Mode::COMMAND;
 
     loop {
         editor.cmd_message = prompt_str.to_string() + &prompt;
@@ -18,11 +18,11 @@ pub fn enter_command(
 
         match key {
             Key::Enter => {
-                editor.mode = Mode::Normal;
+                editor.mode = Mode::NORMAL;
                 return Some(prompt);
             }
             Key::Escape => {
-                editor.mode = Mode::Normal;
+                editor.mode = Mode::NORMAL;
                 return None;
             }
             Key::Char(c) => prompt.push(c),

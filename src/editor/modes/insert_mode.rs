@@ -5,7 +5,7 @@ use crate::terminal::input::Key;
 pub fn process_key_press(editor: &mut Editor, key: Key) {
     match key {
         Key::Escape => {
-            editor.mode = Mode::Normal;
+            editor.mode = Mode::NORMAL;
         }
         Key::Enter => {
             editor.break_line();

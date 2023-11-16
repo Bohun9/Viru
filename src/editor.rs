@@ -52,9 +52,9 @@ impl EditorLine {
 }
 
 enum Mode {
-    Normal,
-    Insert,
-    Command,
+    NORMAL,
+    INSERT,
+    COMMAND,
 }
 
 #[derive(Clone)]
@@ -98,7 +98,7 @@ impl Editor {
                 rx: 0,
             },
             offset: Offset { x: 0, y: 0 },
-            mode: Mode::Normal,
+            mode: Mode::NORMAL,
             lines: read_file(&file_path, &syntax_hl)?,
             cmd_message: "You are a great programmer!".to_string(),
             dirty: false,
@@ -215,8 +215,8 @@ impl Editor {
         let c = terminal::input::read_key();
 
         match self.mode {
-            Mode::Normal => modes::normal_mode::process_key_press(self, c)?,
-            Mode::Insert => modes::insert_mode::process_key_press(self, c),
+            Mode::NORMAL => modes::normal_mode::process_key_press(self, c)?,
+            Mode::INSERT => modes::insert_mode::process_key_press(self, c),
             _ => {}
         }
 
