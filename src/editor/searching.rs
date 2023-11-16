@@ -10,6 +10,7 @@ pub fn forward_search(editor: &mut Editor, pattern: &str) -> bool {
             if i == 0 { editor.cursor.fx } else { 0 },
             pattern,
         ) {
+            editor.offset.y = y.saturating_sub(10);
             editor.cursor.fy = y;
             editor.cursor.fx = x;
             return true;
@@ -35,6 +36,7 @@ pub fn backward_search(editor: &mut Editor, pattern: &str) -> bool {
             },
             pattern,
         ) {
+            editor.offset.y = y.saturating_sub(10);
             editor.cursor.fy = y;
             editor.cursor.fx = x;
             return true;

@@ -1,28 +1,62 @@
-use format_bytes::format_bytes;
 use std::io::{self, Write};
 
-// Handles flushing standard library buffer
-pub fn write(buf: &[u8]) {
-    io::stdout().write(buf).unwrap();
-    io::stdout().flush().unwrap();
+pub struct TermBuffer {
+    buffer: Vec<u8>,
+    fg_color: u8,
 }
 
-pub fn clear_screen() {
-    write(b"\x1b[2J");
-}
+// Structure for minimizing terminal output operations
+impl TermBuffer {
+    pub fn new() -> Self {
+        Self {
+            buffer: vec![],
+            fg_color: 0,
+        }
+    }
 
-pub fn move_cursor(row: usize, col: usize) {
-    write(&format_bytes!(b"\x1b[{};{}H", &(row as u8), &(col as u8)));
-}
+    pub fn write(&mut self, data: &[u8]) {
+        self.extend(data);
+    }
 
-pub fn swap_fg_and_bg_colors() {
-    write(b"\x1b[7m");
-}
+    pub fn flush(&self) {
+        io::stdout().write(&self.buffer).unwrap();
+        io::stdout().flush().unwrap();
+    }
 
-pub fn reset_appearance() {
-    write(b"\x1b[0m");
-}
+    fn extend(&mut self, data: &[u8]) {
+        self.buffer.extend_from_slice(data);
+    }
 
-pub fn set_fg_color(color: u8) {
-    write(&format_bytes!(b"\x1b[{}m", color));
+    pub fn clear_screen(&mut self) {
+        self.extend(b"\x1b[2J");
+    }
+
+    pub fn move_cursor(&mut self, row: usize, col: usize) {
+        self.extend(b"\x1b[");
+        self.extend(row.to_string().as_bytes());
+        self.extend(b";");
+        self.extend(col.to_string().as_bytes());
+        self.extend(b"H");
+    }
+
+    fn graphic_rendition(&mut self, n: u8) {
+        self.extend(b"\x1b[");
+        self.extend(n.to_string().as_bytes());
+        self.extend(b"m");
+    }
+
+    pub fn swap_fg_and_bg_colors(&mut self) {
+        self.graphic_rendition(7);
+    }
+
+    pub fn reset_appearance(&mut self) {
+        self.graphic_rendition(0);
+    }
+
+    pub fn set_fg_color(&mut self, color: u8) {
+        if self.fg_color != color {
+            self.graphic_rendition(color);
+            self.fg_color = color;
+        }
+    }
 }

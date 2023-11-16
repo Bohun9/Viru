@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 
 fn ctrl_key(c: char) -> u8 {
     (c as u8) % 32
@@ -24,38 +24,19 @@ pub fn read_key() -> Key {
         }
     }
 
-    let c = buf[0] as char;
-    if c.is_ascii_control() {
-        write!(io::stdout(), "key pressed: {}\r\n", c as u8).unwrap();
-    } else {
-        write!(io::stdout(), "key pressed: {} ('{}')\r\n", c as u8, c).unwrap();
-    }
-
-    if buf[0] == b'\x1b' {
-        return Key::Escape;
-    }
-
-    if buf[0] == b'\x7F' {
-        return Key::Backspace;
-    }
-
-    if buf[0] == b'\r' {
-        return Key::Enter;
-    }
-
-    if c == '/' {
-        return Key::Slash;
-    }
-
-    if c == ':' {
-        return Key::Colon;
-    }
-
-    for c in 'a'..='z' {
+    // C-M = Enter
+    for c in ('a'..='z').filter(|&c| c != 'm').collect::<Vec<char>>() {
         if buf[0] == ctrl_key(c) {
             return Key::Control(c);
         }
     }
 
-    Key::Char(buf[0] as char)
+    match buf[0] {
+        b'\x1B' => Key::Escape,
+        b'\x7F' => Key::Backspace,
+        b'\r' => Key::Enter,
+        b'/' => Key::Slash,
+        b':' => Key::Colon,
+        u => Key::Char(u as char),
+    }
 }

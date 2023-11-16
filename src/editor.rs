@@ -1,10 +1,10 @@
-use std::fs;
-
 use super::terminal::settings::Window;
 use super::*;
 use highlight::{HLGroup, SyntaxHighlight};
 use modes::normal_mode::QuitError;
-use terminal::display::write;
+use std::fs;
+use std::io;
+use terminal::display::TermBuffer;
 
 pub mod highlight;
 mod modes;
@@ -17,6 +17,27 @@ struct EditorLine {
 }
 
 impl EditorLine {
+    fn new(content: &str, syntax_hl: &Option<SyntaxHighlight>) -> Self {
+        let mut render = vec![];
+        for &c in content.as_bytes() {
+            if c == b'\t' {
+                for _ in 0..4 {
+                    render.push(b' ');
+                }
+            } else {
+                render.push(c);
+            }
+        }
+
+        let highlight = highlight::get_line_highlighting(&render, syntax_hl);
+
+        Self {
+            content: content.to_string(),
+            render,
+            highlight,
+        }
+    }
+
     fn map_fx_to_rx(&self, fx: usize) -> usize {
         self.content
             .chars()
@@ -62,13 +83,13 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn new(file_path: String) -> Self {
+    pub fn new(file_path: String) -> io::Result<Self> {
         let mut window = terminal::settings::get_window_size();
         window.num_rows -= 2;
 
         let syntax_hl = highlight::get_syntax_highlighting(&file_path);
 
-        Self {
+        Ok(Self {
             file_name: file_path.clone(),
             window,
             cursor: Cursor {
@@ -78,12 +99,12 @@ impl Editor {
             },
             offset: Offset { x: 0, y: 0 },
             mode: Mode::Normal,
-            lines: read_file(&file_path, &syntax_hl),
+            lines: read_file(&file_path, &syntax_hl)?,
             cmd_message: "You are a great programmer!".to_string(),
             dirty: false,
             last_pattern: None,
             syntax_hl,
-        }
+        })
     }
 
     fn map_fx_to_rx(&self, rx: usize) -> usize {
@@ -91,17 +112,21 @@ impl Editor {
     }
 
     pub fn refresh_screen(&mut self) {
-        terminal::display::clear_screen();
+        let mut term_buf = terminal::display::TermBuffer::new();
+
+        term_buf.clear_screen();
 
         self.scroll();
-        self.draw_rows();
-        self.draw_status_line();
-        self.draw_command_line();
+        self.draw_rows(&mut term_buf);
+        self.draw_status_line(&mut term_buf);
+        self.draw_command_line(&mut term_buf);
 
-        terminal::display::move_cursor(
+        term_buf.move_cursor(
             self.cursor.fy - self.offset.y + 1,
             self.map_fx_to_rx(self.cursor.fx + 1) - self.offset.x + 1,
         );
+
+        term_buf.flush();
     }
 
     fn scroll(&mut self) {
@@ -121,8 +146,8 @@ impl Editor {
         }
     }
 
-    fn draw_rows(&self) {
-        terminal::display::move_cursor(1, 1);
+    fn draw_rows(&self, term_buf: &mut TermBuffer) {
+        term_buf.move_cursor(1, 1);
 
         for i in 0..self.window.num_rows {
             let row = i + self.offset.y;
@@ -133,24 +158,24 @@ impl Editor {
                     let r = self.window.num_cols.min(self.lines[row].render.len());
 
                     for j in l..r {
-                        terminal::display::set_fg_color(highlight::hl_group_to_term_color(
+                        term_buf.set_fg_color(highlight::hl_group_to_term_color(
                             &self.lines[row].highlight[j],
                         ));
-                        write(&self.lines[row].render[j..j + 1]);
+                        term_buf.write(&self.lines[row].render[j..=j]);
                     }
 
-                    terminal::display::set_fg_color(0);
+                    term_buf.set_fg_color(0);
                 }
             } else {
-                write(b"~");
+                term_buf.write(b"~");
             }
 
-            write(b"\r\n");
+            term_buf.write(b"\r\n");
         }
     }
 
-    fn draw_status_line(&self) {
-        terminal::display::swap_fg_and_bg_colors();
+    fn draw_status_line(&self, term_buf: &mut TermBuffer) {
+        term_buf.swap_fg_and_bg_colors();
 
         let file_name = &self.file_name;
         let dirty_status = if self.dirty { "[modified]" } else { "[sync]" };
@@ -176,14 +201,14 @@ impl Editor {
                 - current_line.len()
                 - num_lines.len()
         );
-        write(&line.as_bytes().iter().cloned().collect::<Vec<u8>>());
+        term_buf.write(&line.as_bytes().iter().cloned().collect::<Vec<u8>>());
 
-        terminal::display::reset_appearance();
+        term_buf.reset_appearance();
     }
 
-    fn draw_command_line(&self) {
+    fn draw_command_line(&self, term_buf: &mut TermBuffer) {
         let line = format!("{:<1$}", &self.cmd_message, self.window.num_cols);
-        write(&line.as_bytes().iter().cloned().collect::<Vec<u8>>());
+        term_buf.write(&line.as_bytes().iter().cloned().collect::<Vec<u8>>());
     }
 
     pub fn process_key_press(&mut self) -> Result<(), QuitError> {
@@ -275,7 +300,7 @@ impl Editor {
     }
 
     fn build_editor_line(&self, content: &str) -> EditorLine {
-        build_editor_line(content, &self.syntax_hl)
+        EditorLine::new(content, &self.syntax_hl)
     }
 
     fn save_file(&mut self) {
@@ -294,11 +319,10 @@ impl Editor {
     }
 }
 
-fn read_file(file_path: &str, syntax_hl: &Option<SyntaxHighlight>) -> Vec<EditorLine> {
-    let mut res: Vec<EditorLine> = fs::read_to_string(file_path)
-        .unwrap()
+fn read_file(file_path: &str, syntax_hl: &Option<SyntaxHighlight>) -> io::Result<Vec<EditorLine>> {
+    let mut res: Vec<EditorLine> = fs::read_to_string(file_path)?
         .split("\n")
-        .map(|line| build_editor_line(line, syntax_hl))
+        .map(|line| EditorLine::new(line, syntax_hl))
         .collect();
 
     // Files have a dummy new line at the end that should not be showed.
@@ -306,26 +330,5 @@ fn read_file(file_path: &str, syntax_hl: &Option<SyntaxHighlight>) -> Vec<Editor
     if res.len() > 1 {
         res.pop();
     }
-    res
-}
-
-fn build_editor_line(content: &str, syntax_hl: &Option<SyntaxHighlight>) -> EditorLine {
-    let mut render = vec![];
-    for &c in content.as_bytes() {
-        if c == b'\t' {
-            for _ in 0..4 {
-                render.push(b' ');
-            }
-        } else {
-            render.push(c);
-        }
-    }
-
-    let highlight = highlight::get_line_highlighting(&render, syntax_hl);
-
-    EditorLine {
-        content: content.to_string(),
-        render,
-        highlight,
-    }
+    Ok(res)
 }

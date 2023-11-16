@@ -1,3 +1,4 @@
+use super::*;
 use std::io::{self, Read};
 use std::os::unix::io::AsRawFd;
 use termios::*;
@@ -22,6 +23,11 @@ impl TerminalFixer {
 
 impl Drop for TerminalFixer {
     fn drop(&mut self) {
+        let mut term_buf = display::TermBuffer::new();
+        term_buf.clear_screen();
+        term_buf.move_cursor(1, 1);
+        term_buf.flush();
+
         let stdout_fd = io::stdout().as_raw_fd();
         tcsetattr(stdout_fd, TCSAFLUSH, &self.orig_termios).unwrap();
     }
@@ -46,9 +52,11 @@ pub struct Window {
 }
 
 pub fn get_window_size() -> Window {
-    super::display::write(b"\x1b[666B");
-    super::display::write(b"\x1b[666C");
-    super::display::write(b"\x1b[6n");
+    let mut term_buf = display::TermBuffer::new();
+    term_buf.write(b"\x1b[666B");
+    term_buf.write(b"\x1b[666C");
+    term_buf.write(b"\x1b[6n");
+    term_buf.flush();
 
     let mut buf: [u8; 64] = [0; 64];
     let mut len = 0;
