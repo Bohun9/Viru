@@ -18,9 +18,10 @@ impl TermBuffer {
         self.extend(data);
     }
 
-    pub fn flush(&self) {
+    pub fn flush(&mut self) {
         io::stdout().write(&self.buffer).unwrap();
         io::stdout().flush().unwrap();
+        self.buffer.clear();
     }
 
     fn extend(&mut self, data: &[u8]) {
